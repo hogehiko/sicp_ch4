@@ -329,7 +329,7 @@
 (define (procedure-parameter-attributes p)
   (define (get-attrib e)
     (if (pair? e)
-        (cdr e)
+        (cadr e)
         'none))
   (map get-attrib (cadr p)))
 

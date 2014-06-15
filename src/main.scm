@@ -44,11 +44,12 @@
       (procedure-body procedure)
       (extend-environment
        (procedure-parameters procedure)
-       (list-of-delayed-args arguments env)
+       (list-of-delayed-args arguments env (procedure-parameter-attributes procedure))
        (procedure-environment procedure))))
     (else
      (error
       "Unknown procedure type -- APPLY" procedure))))
+
 
 (define (list-of-arg-values exps env)
   (if (no-operands? exps)
@@ -57,12 +58,25 @@
             (list-of-arg-values (rest-operands exps)
                                 env))))
 
-(define (list-of-delayed-args exps env)
+
+(define (list-of-delayed-args exps env attributes)
   (if (no-operands? exps)
       '()
-      (cons (delay-it (first-operand exps) env)
+      (cons ((operand-decorator (first-operand attributes)) (first-operand exps) env)
             (list-of-delayed-args (rest-operands exps)
-                                  env))))
+                                  env
+                                  (rest-operands attributes)))))
+
+(define (operand-decorator attribute)
+  (cond ((eq? attribute 'lazy) delay-it)
+        ((eq? attribute 'lazy-memo) delay-it-memo)
+        (else actual-value)))
+
+
+(define (remove-attrib exp)
+  (display exp)
+  (if (pair? exp)
+      (car exp)))
 
 (define (force-it-naive obj)
   (if (thunk? obj)
@@ -87,16 +101,40 @@
         (else obj)))
 
 ;(define force-it force-it-naive)                 
-(define force-it force-it-memorized)                 
+;(define force-it force-it-memorized)                 
+(define (force-it obj)
+  (cond ((thunk? obj)
+         (actual-value (thunk-exp obj)(thunk-env obj))obj)
+        ((thunk-memo? obj)
+         (let ((result (actual-value
+                        (thunk-exp obj)
+                        (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj) result)
+           (set-cdr! (cdr obj) '())
+           result))
+        ((evaluated-thunk? obj)
+         (thunk-value obj))
+        (else obj)))
 
+        
 (define (delay-it exp env)
   (list 'thunk exp env))
+
+(define (delay-it-memo exp env)
+  (list 'thunk-memo exp env))
 
 (define (thunk? obj)
   (tagged-list? obj 'thunk))
 
+(define (thunk-memo? obj)
+  (tagged-list? obj 'thunk-memo))
+
+
 (define (thunk-exp thunk) (cadr thunk))
 (define (thunk-env thunk) (caddr thunk))
+
+
             
 ;手続きの引数
 (define (list-of-values exps env)
@@ -263,9 +301,6 @@
 
 
 (define eval eval-1)
-
-
-
   
 ;4.1.3 評価器のデータ構造
 ;述語のテスト
@@ -283,7 +318,20 @@
 (define (compound-procedure? p)
   (tagged-list? p 'procedure))
 
-(define (procedure-parameters p) (cadr p))
+;(define (procedure-parameters p) (cadr p))
+(define (procedure-parameters p)
+  (define (remove-attribute e)
+    (if (pair? e)
+        (car e)
+        e))
+  (map remove-attribute (cadr p)))
+
+(define (procedure-parameter-attributes p)
+  (define (get-attrib e)
+    (if (pair? e)
+        (cdr e)
+        'none))
+  (map get-attrib (cadr p)))
 
 (define (procedure-body p) (caddr p ))
 
@@ -427,6 +475,7 @@
 (define the-global-environment (setup-environment))
 (driver-loop)
 
+
 ;q4.27
 ;(define count 0)
 ;(define (id x)(set! count (+ count 1))x)
@@ -440,3 +489,7 @@
         
 ;(define (fib n)(cond ((= n 0) 0)((= n 1) 1)(else (+ (fib (- n 1)) (fib (- n 2))))))
 ;25
+
+;(define (p1 (x lazy))(+ x 1))
+;(define (sum3 (x lazy) (y lazy-memo) z)(+ x y z))
+;(define (dn (x lazy) y) 1)

@@ -23,28 +23,81 @@
          (eval-sequence (begin-actions exp) env))
         ((cond? exp) (eval (cond->if exp) env))
         ((application? exp)
-         (apply-e (eval (operator exp) env)
-                (list-of-values (operands exp) env)))
+         (apply-e (actual-value (operator exp) env)
+                (operands exp) env))
         (else
          (error "Unknown expression type --EVAL" exp))))
 
+(define (actual-value exp env)
+  (force-it (eval exp env)))
+
 ;apply
 
-(define (apply-e procedure arguments)
+(define (apply-e procedure arguments env)
   (cond 
     ((primitive-procedure? procedure)
-         (apply-primitive-procedure procedure arguments))
-        ((compound-procedure? procedure)
-         (eval-sequence
-          (procedure-body procedure)
-          (extend-environment
-           (procedure-parameters procedure)
-           arguments
-           (procedure-environment procedure))))
-        (else
-         (error
-          "Unknown procedure type -- APPLY" procedure))))
+     (apply-primitive-procedure 
+      procedure 
+      (list-of-arg-values arguments env)))
+    ((compound-procedure? procedure)
+     (eval-sequence
+      (procedure-body procedure)
+      (extend-environment
+       (procedure-parameters procedure)
+       (list-of-delayed-args arguments env)
+       (procedure-environment procedure))))
+    (else
+     (error
+      "Unknown procedure type -- APPLY" procedure))))
 
+(define (list-of-arg-values exps env)
+  (if (no-operands? exps)
+      '()
+      (cons (actual-value (first-operand exps) env)
+            (list-of-arg-values (rest-operands exps)
+                                env))))
+
+(define (list-of-delayed-args exps env)
+  (if (no-operands? exps)
+      '()
+      (cons (delay-it (first-operand exps) env)
+            (list-of-delayed-args (rest-operands exps)
+                                  env))))
+
+(define (force-it-naive obj)
+  (if (thunk? obj)
+      (actual-value (thunk-exp obj)(thunk-env obj))
+      obj))
+(define (evaluated-thunk? obj)
+  (tagged-list? obj 'evaluated-thunk))
+
+(define (thunk-value evaluated-thunk) (cadr evaluated-thunk))
+
+(define (force-it-memorized obj)
+  (cond ((thunk? obj)
+         (let ((result (actual-value
+                        (thunk-exp obj)
+                        (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj) result)
+           (set-cdr! (cdr obj) '())
+           result))
+        ((evaluated-thunk? obj)
+         (thunk-value obj))
+        (else obj)))
+
+;(define force-it force-it-naive)                 
+(define force-it force-it-memorized)                 
+
+(define (delay-it exp env)
+  (list 'thunk exp env))
+
+(define (thunk? obj)
+  (tagged-list? obj 'thunk))
+
+(define (thunk-exp thunk) (cadr thunk))
+(define (thunk-env thunk) (caddr thunk))
+            
 ;手続きの引数
 (define (list-of-values exps env)
   (if (no-operands? exps)
@@ -54,7 +107,7 @@
 
 ;条件式
 (define (eval-if exp env)
-  (if (true? (eval (if-predicate exp) env))
+  (if (true? (actual-value (if-predicate exp) env))
       (eval (if-consequent exp) env)
       (eval (if-alternative exp) env)))
 
@@ -208,7 +261,11 @@
 
 ;Q4.2 eval内のcondの順番を買え、手続き作用の説が代入の説の前に現れるようにしようと考えた。なにがダメ？
 
+
 (define eval eval-1)
+
+
+
   
 ;4.1.3 評価器のデータ構造
 ;述語のテスト
@@ -334,13 +391,15 @@
   (apply-in-underlying-scheme
    (primitive-implementation proc) args))
 
-(define input-prompt ";; M-Eval input:")
-(define output-prompt ";;; M-Eval value:")
+
+
+(define input-prompt ";; L-Eval input:")
+(define output-prompt ";;; L-Eval value:")
 
 (define (driver-loop)
   (prompt-for-input input-prompt)
   (let ((input (read)))
-    (let ((output (eval input the-global-environment)))
+    (let ((output (actual-value input the-global-environment)))
       (announce-output output-prompt)
       (user-print output)))
   (driver-loop))
@@ -362,6 +421,17 @@
 ;起動
 (define the-global-environment (setup-environment))
 (driver-loop)
-;sample (define (append x y) (if (null? x) y (cons (car x)(append (cdr x) y))))
-;sample2 (append '(a b c) '(d e f))
 
+;q4.27
+;(define count 0)
+;(define (id x)(set! count (+ count 1))x)
+;(define w (id (id 10)))
+
+;count
+
+;w
+
+;count
+        
+;(define (fib n)(cond ((= n 0) 0)((= n 1) 1)(else (+ (fib (- n 1)) (fib (- n 2))))))
+;25

@@ -22,6 +22,7 @@
         ((begin? exp)
          (eval-sequence (begin-actions exp) env))
         ((cond? exp) (eval (cond->if exp) env))
+        ((unless? exp) (eval (unless->if exp) env))
         ((application? exp)
          (apply-e (eval (operator exp) env)
                 (list-of-values (operands exp) env)))
@@ -192,6 +193,7 @@
 (define (cond->if exp)
   (expand-clauses (cond-clauses exp)))
 
+
 (define (expand-clauses clauses)
   (if (null? clauses)
       'false
@@ -205,6 +207,22 @@
             (make-if (cond-predicate first)
                      (sequence->exp (cond-actions first))
                      (expand-clauses rest))))))
+
+(define (unless? exp) (tagged-list? exp 'unless))
+
+(define (unless-condition exp)
+  (cadr exp))
+
+(define (unless-usual-value exp)
+  (cadr exp))
+
+(define (unless-exceptional-value exp)
+  (cadddr exp))
+
+(define (unless->if exp)
+  (make-if (unless-condition exp) 
+           (unless-exceptional-value exp) 
+           (unless-usual-value exp)))
 
 ;Q4.2 eval内のcondの順番を買え、手続き作用の説が代入の説の前に現れるようにしようと考えた。なにがダメ？
 
